@@ -1,9 +1,10 @@
 #include "TSpectrum.h"
+#include "Utils.C"
 
 //general parameters
-const int NMAXFILES = 4;
+const int NMAXFILES = 3;
 const int NMAXPEAKS = 5;
-const int WFLENGTH  = 2500;
+const int WFLENGTH  = 3125;
 
 //sipm pitch related
 const int SIPM75[]           = {11,15,16,17,19,21,12}; //12 is from Madrid
@@ -12,74 +13,47 @@ const double OV75[NMAXFILES] = {2,2.5,3};
 
 //
 const double cut_level = 0.004; //zero if not wanted a lower limit
+const double noise_level = 0.006; //zero if not wanted a lower limit
 
 //parameters for ploting/printing results
+
 bool plot_intermediate = true;
-bool plot_results      = true;
+bool plot_results      = false;
 bool use_abs_voltage   = false;
 bool print_results     = true;
 
 //**********************************************************
-int getSiPMFromName(char* name){
-//**********************************************************
-  //the input file name
-  std::string filename(name);
-
-  //get sipm number from filename
-  int sipm = stoi(filename.substr(filename.find("sipm")+4,2));
-  return sipm;
-}
-
-//**********************************************************
-bool is75Pitch(const int sipm){
-//**********************************************************
-
-  bool isIt = false;
-  for(int i = 0; i < sizeof(SIPM75); i++){
-    if(sipm == SIPM75[i]){
-      isIt = true;
-      break;
-    }
-  }
-  return isIt;
-}
-
-//**********************************************************
-void initializeByPitch(const int sipm, double* OV){
-//**********************************************************
-  if(is75Pitch(sipm)){
-    for(int i = 0; i < NMAXFILES; i++)OV[i] = OV75[i];
-    std::cout << "------------------------------------------------------------------" << std::endl;
-    std::cout << "Analyzing Dark Noise from 75 um pitch sipm " << sipm << std::endl;
-    std::cout << "------------------------------------------------------------------" << std::endl;
-  }
-  else{
-    for(int i = 0; i < NMAXFILES; i++)OV[i] = OV50[i];
-    std::cout << "------------------------------------------------------------------" << std::endl;
-    std::cout << "Analyzing Dark Noise from 50 um pitch sipm " << sipm << std::endl;
-    std::cout << "------------------------------------------------------------------" << std::endl;
-  }
-}
-
-//**********************************************************
-int getMultipleEvents(TH1F* hxt,
-		      TLine* tl){
+double getPE(TH1F* hxt){
 //**********************************************************
 
   //create tspectrum for finding peak
   TSpectrum *s = new TSpectrum(1);
 
-  //look for single pe value and compute 1.5 pe;
-  s->Search(hxt,0.0001,"",0.1);
+  //look for single pe value;
+  s->Search(hxt,0.0001,"",0.15);
   double* pe = s->GetPositionX();
-  double oneandahalfpe =  3*pe[0]/2;
-  tl->SetY1(oneandahalfpe);
-  tl->SetY2(oneandahalfpe);
-  std::cout << oneandahalfpe << std::endl;
-  hxt->Draw();gPad->WaitPrimitive();
+
+  std::cout << 3*pe[0]/2 << std::endl;
+  if(plot_intermediate){hxt->Draw();gPad->Update();gPad->WaitPrimitive();}
+  
+  return pe[0];
+}
+
+
+//**********************************************************
+int getMultipleEvents(TH1F* hxt,
+		      TLine* tl,
+		      double pe){
+//**********************************************************
+
+  std::cout << pe << std::endl;
+  
+  tl->SetY1(3*pe/2);
+  tl->SetY2(3*pe/2);
+
   double multiple = 0;
 
-  for(int i = 0; i < hxt->GetNbinsX(); i++)if(hxt->GetBinCenter(i) > oneandahalfpe)multiple = multiple + hxt->GetBinContent(i);
+  for(int i = 0; i < hxt->GetNbinsX(); i++)if(hxt->GetBinCenter(i) > 3*pe/2)multiple = multiple + hxt->GetBinContent(i);
 
   return multiple;
 }
@@ -120,12 +94,15 @@ bool isNoise(double* time, double* V, const double baseline){
 //**********************************************************
 
   bool isNoise = false;
-
-  for(int i = 0; i < WFLENGTH; i++)if(time[i] > 0.05e-6 && time[i] < 0.3e-6 && V[i] < baseline){
+  double vmax  = 0;
+  
+  for(int i = 0; i < WFLENGTH; i++)if(time[i] > 0.05e-6 && time[i] < 0.3e-6 && V[i]-baseline<0){
       isNoise = true;
-      //Graph* tg = new TGraph(WFLENGTH,time,V);tg->Draw("ap");gPad->WaitPrimitive();
-      break;
+      //TGraph* tg = new TGraph(WFLENGTH,time,V);tg->Draw("ap");gPad->WaitPrimitive();
     }
+
+  //std::cout << isNoise << std::endl;
+  //TGraph* tg = new TGraph(WFLENGTH,time,V);tg->Draw("ap");gPad->WaitPrimitive();
   
   return isNoise;
 }
@@ -135,7 +112,8 @@ void analizeWf(double* ftime, double* fV,
 	       const double absolute_time,
 	       const double baseline,
 	       int &nevents,
-	       TGraph* tg){
+	       TGraph* tg,
+	       TH1F* hxt){
 //**********************************************************
 
   //create a histogram for the wf and another for the baseline
@@ -154,7 +132,7 @@ void analizeWf(double* ftime, double* fV,
   TSpectrum *s = new TSpectrum(NMAXPEAKS);
 
   //look for peaks
-  int npeaks = s->Search(h,0.00001,"",0.4);
+  int npeaks = s->Search(h,0.0000001,"",0.4);
   double* tpeak = s->GetPositionX();
   double* Vpeak = s->GetPositionY();
   //h->Draw();gPad->WaitPrimitive();
@@ -198,6 +176,7 @@ void analizeWf(double* ftime, double* fV,
   for(int i = 0; i < npeaks; i++){
     if(Vpeak[i] == -999 || tpeak[i] < 0 || Vpeak[i] < cut_level)continue;
     tg->SetPoint(nevents,tpeak[i],Vpeak[i]);
+    hxt->Fill(Vpeak[i]);
     //tg->Draw("ap");gPad->WaitPrimitive();
     nevents = nevents+1;
   }
@@ -236,10 +215,10 @@ void analizeTree(const std::string& name,
   TH1F* hdcr = new TH1F("hdcr","hdcr",nbins,bins);
 
   //histogram for dcr (mHz)
-  TH1F* hmhz = new TH1F("hmhz","hmhz",200,0,1000);
+  TH1F* hmhz = new TH1F("hmhz","hmhz",50,0,250);
 
   //histogram for xtalk
-  TH1F* hxt  = new TH1F("hxt" ,"hxt" ,1000,0,0.5);
+  TH1F* hxt  = new TH1F("hxt" ,"hxt" ,1000,0,0.2);
   
   //TGraph for 2D plot
   TGraph* tg = new TGraph();
@@ -280,23 +259,30 @@ void analizeTree(const std::string& name,
     //if waveform is not noise, add one more event and fill graphs
     if(!isNoise(ftime,fV,baseline)){
       //get peaks position and amplitude from wf and fill histograms
-      analizeWf(ftime,fV,absolute_time,baseline,nevents,tg);
+      analizeWf(ftime,fV,absolute_time,baseline,nevents,tg,hxt);
       ntriggers++;
       if(i%5000==0)std::cout << i+1 << "/" << nentries << std::endl;
     }
   }
-
+  
+  //get photoelectron level to set boundaries
+  double pe = getPE(hxt);
+  std::cout << pe << std::endl;
+  
   //create new tgraph to do the main plot. 
   TGraph* mtg = new TGraph();
 
   //run over the stored peaks in the histogram and get info
   double V0,t0,Vnext,tnext,triggertime;
+  int point = 0;
+  //get point "zero"
+  tg->GetPoint(0,t0,V0);
   for(int i = 1; i < nevents; i++){
-
-    //get point "zero"
-    tg->GetPoint(i-1,t0,V0);
+    
     //get "next" point
     tg->GetPoint(i,tnext,Vnext);
+    //skip it if below half PE
+    if(Vnext<pe/2)continue;
 
     //compute time between points and increase AP if needed
     triggertime = tnext-t0;
@@ -304,20 +290,24 @@ void analizeTree(const std::string& name,
     if(triggertime>0 && triggertime<5e-6)AP++;
     
     //fill histograms and main plot
-    mtg->SetPoint(i-1,triggertime,Vnext);
+    mtg->SetPoint(point,triggertime,Vnext);
     hdcr->Fill(triggertime);
     hmhz->Fill(1000/((triggertime)*36));
-    hxt ->Fill(Vnext);
+    //hxt ->Fill(Vnext);
+
+    V0 = Vnext;
+    t0 = tnext;
+    point++;
   }
 
   //compute AP
   eAP = 100*sqrt(pow(sqrt(AP)/nevents,2)+pow(AP*sqrt(nevents)/(nevents*nevents),2));
-  AP  = 100*AP/nevents;
+  AP  = 100*AP/point;//nevents;
   
   //compute xt
   //get events with more that one pe
-  int multiple = getMultipleEvents(hxt,tlxt);
-  XT  = 100*(double)multiple/nevents;
+  int multiple = getMultipleEvents(hxt,tlxt,pe);
+  XT  = 100*(double)multiple/point;//nevents
   eXT = 100*sqrt(pow(sqrt(multiple)/nevents,2)+pow(multiple*sqrt(nevents)/(nevents*nevents),2));
   
   //draw and print 1D rate plot. Compute DCR
@@ -326,10 +316,10 @@ void analizeTree(const std::string& name,
   hdcr->GetYaxis()->SetTitle("#it{Events}");
   hdcr->Draw();if(plot_intermediate){gPad->Update();gPad->WaitPrimitive();}
   if(plot_results)gPad->Print(("delaytime_"+sOV.str()+"OV.pdf").c_str());
-  DCR  = ntriggers/absolute_time;
+  DCR  = point/absolute_time;//ntriggers/absolute_time;
   DCR  = DCR/36;
   DCR  = DCR*1000;
-  eDCR = 1000*sqrt(nevents)/(absolute_time*36);
+  eDCR = 1000*sqrt(point)/(absolute_time*36);
 
   //draw hz distribution, fit and compute fit DCR
   gPad->SetLogx(0);gPad->SetLogy();
@@ -337,7 +327,7 @@ void analizeTree(const std::string& name,
   hmhz->GetYaxis()->SetTitle("#it{Events}");
   hmhz->Draw("e");
   TF1* f = new TF1("f","landau(0)+pol0(3)");
-  f->SetParameters(400,100,40,1);
+  f->SetParameters(600,10,4,1);
   hmhz->Fit("f","Q");if(plot_intermediate){gPad->Update();gPad->WaitPrimitive();}
   fDCR  = f->GetParameter(1);
   feDCR = f->GetParError(1);
@@ -363,6 +353,8 @@ void analizeTree(const std::string& name,
   tlap->Draw();if(plot_intermediate){gPad->Update();gPad->WaitPrimitive();}
   if(plot_results)gPad->Print(("2dplot_"+sOV.str()+"OV.pdf").c_str());
 
+  gPad->SetLogx(0);gPad->SetLogy(0);
+  
   //delete stuff
   gPad->Clear();
   hxt->Delete();
@@ -378,7 +370,7 @@ void analizeTree(const std::string& name,
 void cnoise_from_tree(){
 //**********************************************************
   
-  gStyle->SetOptStat(0);
+  //gStyle->SetOptStat(0);
   gStyle->SetOptFit(1);
 
   std::string listname = "lists/cnoise.list";
@@ -400,7 +392,7 @@ void cnoise_from_tree(){
   double AP[NMAXFILES]      = {0};
   double eAP[NMAXFILES]     = {0};
   double V[NMAXFILES]       = {0};
-  double OV[NMAXFILES]      = {0};
+  double OV[NMAXFILES]      = {3,4,5};
   double voltage[NMAXFILES] = {0};
   
   //Read the list file
@@ -411,13 +403,13 @@ void cnoise_from_tree(){
   while(fscanf(pFile,"%s",filename) == 1 && NFILES < NMAXFILES){  
     if(filename[0] == '/' && filename[1] == '/')continue;
     if(NFILES == 0){
-      sipm = getSiPMFromName(filename);
-      initializeByPitch(sipm,OV);
+      sipm = SiPMUtils::getSiPMFromName(filename);
+      //initializeByPitch(sipm,OV);
     }
     //getx operating voltage and decide wether to use absolute or relative
-    getVoltageFromName(filename,V[NFILES]);
-    if(use_abs_voltage)voltage[NFILES] = V[NFILES];
-    else voltage[NFILES] = OV[NFILES];
+    //SiPMUtils::getVoltageFromName(filename,V[NFILES]);
+    //if(use_abs_voltage)voltage[NFILES] = V[NFILES];
+    //else voltage[NFILES] = OV[NFILES];
     analizeTree(filename,DCR[NFILES],eDCR[NFILES],fDCR[NFILES],feDCR[NFILES],XT[NFILES],eXT[NFILES],AP[NFILES],eAP[NFILES],voltage[NFILES],NFILES);
     NFILES++;
   }
@@ -442,7 +434,7 @@ void cnoise_from_tree(){
 
   //plot results
   TCanvas* c1 = new TCanvas("c1","c1",600,600);
-  TGraphErrors* tg = new TGraphErrors(NFILES,V,DCR,0,eDCR);
+  TGraphErrors* tg = new TGraphErrors(NFILES,OV,DCR,0,eDCR);
   tg->SetMarkerStyle(20);
   tg->GetXaxis()->SetTitle("#it{OV} (V)");
   tg->GetYaxis()->SetTitle("#it{DCR} (mHz)");
@@ -450,7 +442,7 @@ void cnoise_from_tree(){
   if(plot_results)c1->Print("DCR.pdf");
 
   TCanvas* c2 = new TCanvas("c2","c2",600,600);
-  TGraphErrors* tg2 = new TGraphErrors(NFILES,V,fDCR,0,feDCR);
+  TGraphErrors* tg2 = new TGraphErrors(NFILES,OV,fDCR,0,feDCR);
   tg2->SetMarkerStyle(20);
   tg2->GetXaxis()->SetTitle("#it{OV} (V)");
   tg2->GetYaxis()->SetTitle("#it{DCR from fit} (mHz)");
@@ -458,7 +450,7 @@ void cnoise_from_tree(){
   if(plot_results)c2->Print("DCRfromfit.pdf");
 
   TCanvas* c3 = new TCanvas("c3","c3",600,600);
-  TGraphErrors* tg3 = new TGraphErrors(NFILES,V,XT,0,eXT);
+  TGraphErrors* tg3 = new TGraphErrors(NFILES,OV,XT,0,eXT);
   tg3->SetMarkerStyle(20);
   tg3->GetXaxis()->SetTitle("#it{OV} (V)");
   tg3->GetYaxis()->SetTitle("#it{X-Talk} (%)");
@@ -466,7 +458,7 @@ void cnoise_from_tree(){
   if(plot_results)c3->Print("XT.pdf");
 
   TCanvas* c4 = new TCanvas("c4","c4",600,600);
-  TGraphErrors* tg4 = new TGraphErrors(NFILES,V,AP,0,eAP);
+  TGraphErrors* tg4 = new TGraphErrors(NFILES,OV,AP,0,eAP);
   tg4->SetMarkerStyle(20);
   tg4->GetXaxis()->SetTitle("#it{OV} (V)");
   tg4->GetYaxis()->SetTitle("#it{AP} (%)");

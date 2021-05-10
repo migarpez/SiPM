@@ -178,29 +178,31 @@ void forward(){
   //tg->Fit("pol1");0
 
   //fill a common histogram
-  TH1F* ht = new TH1F("ht","ht",50,32.5,33);
+  TH1F* ht = new TH1F("ht","ht",50,56,74);
   for(int i = 0; i < counter; i++)ht->Fill(RQ[i]);//hr[i]->Fill(RQ_cell[i*6+j]);
   
   //draw stacked histogram for boards
   THStack* hs = new THStack("hs",""); 
   TH1F* hr[NBOARDS];
   TLegend* lg = new TLegend (0.52,0.72,0.9,0.9);
+
+  ht->GetXaxis()->SetTitle("#it{R_{Q}} (#Omega)");
+  ht->Draw();
   
   for(int i = 0; i < NBOARDS; i++){
     std::stringstream ssi, ssii;
     ssi << i;
     ssii << i+1;
     //hr[i] = new TH1F(("hb"+ssi.str()+"").c_str(),("hb"+ssi.str()+"").c_str(),50,380,450);
-    hr[i] = new TH1F(("hb"+ssi.str()+"").c_str(),("hb"+ssi.str()+"").c_str(),50,30,36);
+    hr[i] = new TH1F(("hb"+ssi.str()+"").c_str(),("hb"+ssi.str()+"").c_str(),50,56,74);
     for(int j = 0; j < NSIPMPERBOARD; j++)hr[i]->Fill(RQ[i*6+j]);//hr[i]->Fill(RQ_cell[i*6+j]);
     hr[i]->SetFillColor(i+1);
     lg->AddEntry(hr[i],("board "+ssii.str()+"").c_str(),"f");
     hs->Add(hr[i]);
   }
-  hs->Draw();
+  hs->Draw("same");
   hs->GetXaxis()->SetTitle("#it{R_{Q}} (#Omega)");
   lg->Draw();
 
-  //ht->GetXaxis()->SetTitle("#it{R_{Q}} (#Omega)");
-  //ht->Draw();
+  
 }

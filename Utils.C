@@ -102,15 +102,16 @@ namespace SiPMUtils{
   }
 
   //**********************************************************
-  void initializeChargeHistogramByPitch(const int sipm, double* OV,
-					double hqmin1, double hqmin2,
-					double hqmax1, double hqmax2){
+  void initializeChargeHistogramByPitch(const int board, const int sipm,
+					double* OV,
+					double &hqmin1, double &hqmin2,
+					double &hqmax1, double &hqmax2){
   //**********************************************************
 
-    const double hqmin1_50 = -40e-9;
-    const double hqmin2_50 = -40e-9;
-    const double hqmax1_50 = 500e-9;
-    const double hqmax2_50 = 500e-9;
+    const double hqmin1_50 = -10e-9;
+    const double hqmin2_50 = -20e-9;
+    const double hqmax1_50 = 100e-9;
+    const double hqmax2_50 = 140e-9;
     const double hqmin1_75 = -40e-9;
     const double hqmin2_75 = -40e-9;
     const double hqmax1_75 = 500e-9;
@@ -119,7 +120,7 @@ namespace SiPMUtils{
     const double OV50[] = {3,4  ,5};
     const double OV75[] = {2,2.5,3};
     
-    if(SiPMUtils::is75Pitch(sipm)){
+    if(SiPMUtils::is75Pitch(sipm) && board==-1){
       hqmin1 = hqmin1_75;
       hqmin2 = hqmin2_75;
       hqmax1 = hqmax1_75;

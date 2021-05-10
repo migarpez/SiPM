@@ -13,9 +13,9 @@
 //general parameters
 const int NMAXFILES    = 3;
 const int NSETFILES    = 3;
-const int NMAXPEAKS    = 15;
+const int NMAXPEAKS    = 5;
 const int NMAXPEAKSFIT = 3;
-const int WFLENGTH     = 1300;
+const int WFLENGTH     = 1625;
 
 //constants for calculating
 const double AMPFACTOR_LN2_50O = 2940;
@@ -114,7 +114,7 @@ void computeGain(TH1F* hq,
   for(int i = 0 ; i < npeaks ; i++){
     par[i*3+0] = peaky[i];
     par[i*3+1] = peakx[i];
-    par[i*3+2] = 0.00000001;
+    par[i*3+2] = 0.000000001;
   }
 
   if(plot_intermediate){
@@ -123,9 +123,16 @@ void computeGain(TH1F* hq,
   }
   
   //second gaussian sumatory
-  TF1* fgaus = new TF1("fgaus",fpeaks,hqmin1+NFILES*(hqmin2-hqmin1)/NMAXFILES,hqmax1+NFILES*(hqmax2-hqmax1)/NMAXFILES,3*npeaks);
+  //TF1* fgaus = new TF1("fgaus",fpeaks,hqmin1+NFILES*(hqmin2-hqmin1)/NMAXFILES,hqmax1+NFILES*(hqmax2-hqmax1)/NMAXFILES,3*npeaks);
+  TF1* fgaus = new TF1("fgaus",fpeaks,hqmin1+(NFILES%NSETFILES)*(hqmin2-hqmin1)/NSETFILES,hqmax1+(NFILES%NSETFILES)*(hqmax2-hqmax1)/NSETFILES,3*npeaks);
+  
   fgaus->SetParameters(par);
-
+  for(int i = 0; i < npeaks; i++){
+    fgaus->SetParLimits(i*3+0,par[i*3+1]*0.7,par[i*3+0]*1.3);
+    fgaus->SetParLimits(i*3+1,par[i*3+1]*0.9,par[i*3+1]*1.1);
+    fgaus->SetParLimits(i*3+2,0.0000000001,  0.0000001);
+  }
+  
   //for(int i = 0 ; i < npeaks ; i++){
   //  fgaus->SetParLimits(i*3+0,1,1000);
   //  fgaus->SetParLimits(i*3+2,0,0.1);
@@ -135,7 +142,7 @@ void computeGain(TH1F* hq,
   //fit histogram without bg
   hq->GetXaxis()->SetTitle("#it{Charge} (Vs)");
   hq->GetYaxis()->SetTitle("#it{Entries}");
-  hq->Fit("fgaus","Q");
+  hq->Fit("fgaus","");
   if(plot_intermediate){
     gPad->Update();
     gPad->WaitPrimitive();
@@ -151,7 +158,7 @@ void computeGain(TH1F* hq,
     number[i] = i;
   }
   
-  //order peaks for lower to higher
+  //order peaks from lower to higher
   double aux1,aux2,aux3;
   for(int i = 0 ; i < npeaks ; i++){
     for(int j = i+1 ; j < npeaks ; j++){
@@ -305,7 +312,7 @@ void analizeTree(const std::string& name,
         
     //if not integrate each waveform and fill histogram
     hq->Fill(integrateWf(ftime,fV,NFILES));
-    if(i%5000==0)std::cout << "looped over " << i+1 << "/" << nentries << " entries" << std::endl;
+    if(i%1000==0)std::cout << "looped over " << i+1 << "/" << nentries << " entries" << std::endl;
   }
 
   //compute gain from histogram
@@ -335,17 +342,18 @@ void gain_from_tree(){
   }
 
   //variables for main plot
-  double GAIN[NMAXFILES]             = {0};
-  double eGAIN[NMAXFILES]            = {0};
-  double V[NMAXFILES]                = {0};
-  double OV[NMAXFILES]               = {0};
-  double voltage[NMAXFILES]          = {0};
-  double SNR[NMAXFILES][3]           = {0};
+  double GAIN[NMAXFILES]    = {0};
+  double eGAIN[NMAXFILES]   = {0};
+  double V[NMAXFILES]       = {0};
+  double OV[NMAXFILES]      = {0};
+  double voltage[NMAXFILES] = {0};
+  double SNR[NMAXFILES][3]  = {0};
+  int sipm                  =  0;
+  int board                 =  0;
   
   //Read the list file
   char filename[200];
   int NFILES     = 0;
-  int sipm       = 0;
 
   //main loop
   while(fscanf(pFile,"%s",filename) == 1){  
@@ -354,8 +362,9 @@ void gain_from_tree(){
     //create histogram with variable limits, depending on SiPM pitch
     //select overvoltages depending on SiPM pitch
     if(NFILES == 0){
-      sipm = SiPMUtils::getSiPMFromName(filename);
-      SiPMUtils::initializeChargeHistogramByPitch(sipm,OV,hqmin1,hqmin2,hqmax1,hqmax2);
+      board = SiPMUtils::getBoardFromName(filename);
+      sipm  = SiPMUtils::getSiPMFromName(filename);
+      SiPMUtils::initializeChargeHistogramByPitch(board,sipm,OV,hqmin1,hqmin2,hqmax1,hqmax2);
     }
     TH1F* hq = new TH1F("hq","hq",500,
 			hqmin1+(NFILES%NSETFILES)*(hqmin2-hqmin1)/NSETFILES,

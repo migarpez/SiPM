@@ -6,7 +6,7 @@ const int NMAXFILES     = 500;
 const int NBOARDS       = 20;
 const int NSIPMPERBOARD = 6;
 
-bool plot_intermediate = false;
+bool plot_intermediate = true;
 
 //**********************************************************
 void analizeCurve(char* name,
@@ -57,8 +57,8 @@ void analizeCurve(char* name,
   //define limits
   double fmin,fmax;
   if(SiPMUtils::isColdFromName(filename)){
-    fmin = 26.8;
-    fmax = 37.5;
+    fmin = 41.5;
+    fmax = 45;
   }
   else{
     fmin = 51.1;
@@ -76,7 +76,7 @@ void analizeCurve(char* name,
     value = inverse*IvsV->Derivative(voltage);
     if(voltage < fmin || voltage > fmax)continue;
     tgf->SetPoint(counter,voltage,value);
-    if(value > maxvalue && abs(voltage-52.5)<1.2){
+    if(value > maxvalue && voltage>fmin){
       maxvalue = value;
       maxvoltage = voltage;
     }
@@ -144,12 +144,45 @@ void inverse(){
     board[counter] = SiPMUtils::getBoardFromName(file_name);
 
     analizeCurve(file_name,c1,c2,BKV[counter],eBKV[counter]);
+    
+    //fixed values for warm measurements
+    //if(board[counter]==3  && sipm[counter]==1)BKV[counter]=52.46;
+    //if(board[counter]==15 && sipm[counter]==2)BKV[counter]=51.99;
+    //if(board[counter]==20 && sipm[counter]==4)BKV[counter]=51.60;
+
+    //fixed values for ln2 measurements pre baths
+    /*if(board[counter]==1  && sipm[counter]==1)BKV[counter]=42.575;
+    if(board[counter]==1  && sipm[counter]==5)BKV[counter]=42.339;
+    if(board[counter]==1  && sipm[counter]==6)BKV[counter]=42.440;
+    if(board[counter]==3  && sipm[counter]==1)BKV[counter]=42.494;
+    if(board[counter]==3  && sipm[counter]==2)BKV[counter]=42.421;
+    if(board[counter]==6  && sipm[counter]==1)BKV[counter]=42.018;
+    if(board[counter]==7  && sipm[counter]==1)BKV[counter]=42.555;
+    if(board[counter]==8  && sipm[counter]==2)BKV[counter]=41.876;
+    if(board[counter]==15 && sipm[counter]==2)BKV[counter]=41.911;
+    if(board[counter]==16 && sipm[counter]==1)BKV[counter]=41.540;
+    if(board[counter]==16 && sipm[counter]==2)BKV[counter]=41.544;
+    if(board[counter]==17 && sipm[counter]==1)BKV[counter]=42.553;
+    if(board[counter]==17 && sipm[counter]==2)BKV[counter]=42.504;
+    if(board[counter]==17 && sipm[counter]==3)BKV[counter]=42.545;*/
+
+    //fixed values for ln2 measurements after baths
+    if(board[counter]==2  && sipm[counter]==3)BKV[counter]=41.897;
+    if(board[counter]==3  && sipm[counter]==1)BKV[counter]=42.529;
+    if(board[counter]==3  && sipm[counter]==5)BKV[counter]=41.906;
+    if(board[counter]==5  && sipm[counter]==4)BKV[counter]=41.895;
+    if(board[counter]==7  && sipm[counter]==3)BKV[counter]=42.447;
+    if(board[counter]==14 && sipm[counter]==1)BKV[counter]=41.800;
+    if(board[counter]==15 && sipm[counter]==1)BKV[counter]=41.415;
+    if(board[counter]==16 && sipm[counter]==1)BKV[counter]=41.540;
+    if(board[counter]==16 && sipm[counter]==2)BKV[counter]=41.546;
+    if(board[counter]==16 && sipm[counter]==6)BKV[counter]=41.900;
+    if(board[counter]==17 && sipm[counter]==1)BKV[counter]=41.565;
+    if(board[counter]==17 && sipm[counter]==2)BKV[counter]=41.513;
+    if(board[counter]==17 && sipm[counter]==3)BKV[counter]=41.554;
+    if(board[counter]==20 && sipm[counter]==1)BKV[counter]=41.695;
 
     std::cout << board[counter] << " " << sipm[counter] << " " << BKV[counter] << " " << eBKV[counter] << std::endl;
-    
-    if(board[counter]==3  && sipm[counter]==1)BKV[counter]=52.46;
-    if(board[counter]==15 && sipm[counter]==2)BKV[counter]=51.99;
-    if(board[counter]==20 && sipm[counter]==4)BKV[counter]=51.60;
     
     counter++;
   }
@@ -164,7 +197,7 @@ void inverse(){
   gStyle->SetOptFit();
   //tg->Fit("pol1");
   
-  TH1F* hr = new TH1F("hr","hr",100,51.5,51.7);
+  TH1F* hr = new TH1F("hr","hr",50,40,44);
   for(int i = 0; i < counter; i++)hr->Fill(BKV[i]);
   hr->Draw();
 
@@ -177,16 +210,16 @@ void inverse(){
     std::stringstream ssi, ssii;
     ssi << i;
     ssii << i+1;
-    hb[i] = new TH1F(("hb"+ssi.str()+"").c_str(),("hb"+ssi.str()+"").c_str(),50,50,54);
+    hb[i] = new TH1F(("hb"+ssi.str()+"").c_str(),("hb"+ssi.str()+"").c_str(),50,40,44);
     for(int j = 0; j < NSIPMPERBOARD; j++)hb[i]->Fill(BKV[i*6+j]);
     hb[i]->SetFillColor(i+1);
     lg->AddEntry(hb[i],("board "+ssii.str()+"").c_str(),"f");
     hs->Add(hb[i]);
   }
-  hs->Draw();
+  hs->Draw("same");
   hs->GetXaxis()->SetTitle("#it{V_{B}} (V)");
   lg->Draw();
 
-  hr->GetXaxis()->SetTitle("#it{V_{B}} (V)");
-  hr->Draw();
+  //hr->GetXaxis()->SetTitle("#it{V_{B}} (V)");
+  //hr->Draw();
 }
