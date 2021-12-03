@@ -2,14 +2,14 @@
 
 //macro for ploting voltage vs intensity data and getting breakdown voltage
 const int NMAXFILES     = 500;
-const int NBOARDS       = 20;
+const int NBOARDS       = 12;
 const int NSIPMPERBOARD = 6;
 
 const double NPIXELS50  = 14331;
 const double NPIXELS75  = 6364;
 const double NPIXELSFBK = 11188;
-const double IMIN       = 5.2;
-const double IMAX       = 6.0; 
+const double IMIN       = 5.0;
+const double IMAX       = 6.2; 
 
 //parameters for ploting/printing results
 bool plot_intermediate = false;
@@ -24,8 +24,10 @@ void getRQCell(char* name,
 //**********************************************************
 
   if(SiPMUtils::isBoard(name)){
-    RQ_cell  = NPIXELS50*RQ;
-    eRQ_cell = NPIXELS50*eRQ;
+    //RQ_cell  = NPIXELS50*RQ;
+    //eRQ_cell = NPIXELS50*eRQ;
+    RQ_cell  = NPIXELSFBK*RQ;
+    eRQ_cell = NPIXELSFBK*eRQ;
   }
   else if(SiPMUtils::is75Pitch(name) && !SiPMUtils::isFBK(name)){
     RQ_cell  = NPIXELS75*RQ;
@@ -102,7 +104,11 @@ void analizeCurve(char* name,
   //draw the graph
   tg->GetXaxis()->SetTitle("#it{V} (V)");
   tg->GetYaxis()->SetTitle("#it{I} (mA)");
+  tg->GetYaxis()->SetRangeUser(0,20);
+  //tg->SetMarkerStyle(20);
+  //tg->SetMarkerSize(0.25);
   tg->Draw("apc");
+  //gPad->WaitPrimitive();
 
   //get fit limits
   double fitmin,fitmax;
@@ -110,6 +116,8 @@ void analizeCurve(char* name,
 
   //fit data
   tg->Fit("pol1","Q","",fitmin,fitmax);
+  gPad->SetGridy();
+  gPad->SetGridx();
   if(plot_intermediate){gPad->Update();gPad->WaitPrimitive();}
   
   //compute RQ and error
@@ -160,9 +168,12 @@ void forward(){
     board[counter] = SiPMUtils::getBoardFromName(file_name);
 
     analizeCurve(file_name,c1,RQ[counter],eRQ[counter]);
-    getRQCell(file_name,RQ[counter],eRQ[counter],RQ_cell[counter],eRQ_cell[counter]);
-
-    std::cout << board[counter] << " " << sipm[counter] << " " << RQ[counter] << std::endl;
+    //getRQCell(file_name,RQ[counter],eRQ[counter],RQ_cell[counter],eRQ_cell[counter]);
+    RQ_cell[counter] = RQ[counter]/11188;
+    eRQ_cell[counter] = eRQ[counter]/11188;
+    
+    
+    std::cout << RQ[counter] << std::endl;
     
     counter++;
   }  
@@ -178,7 +189,7 @@ void forward(){
   //tg->Fit("pol1");0
 
   //fill a common histogram
-  TH1F* ht = new TH1F("ht","ht",50,56,74);
+  TH1F* ht = new TH1F("ht","ht",50,30,80);
   for(int i = 0; i < counter; i++)ht->Fill(RQ[i]);//hr[i]->Fill(RQ_cell[i*6+j]);
   
   //draw stacked histogram for boards
@@ -188,16 +199,18 @@ void forward(){
 
   ht->GetXaxis()->SetTitle("#it{R_{Q}} (#Omega)");
   ht->Draw();
+
+  std::string names[NBOARDS] = {"M3_7","P11_2","P11_3","P11_4","P11_5","P11_6","P11_8","P11_9","P11_10","P12_1","P12_2","P12_3"};
   
   for(int i = 0; i < NBOARDS; i++){
     std::stringstream ssi, ssii;
     ssi << i;
     ssii << i+1;
     //hr[i] = new TH1F(("hb"+ssi.str()+"").c_str(),("hb"+ssi.str()+"").c_str(),50,380,450);
-    hr[i] = new TH1F(("hb"+ssi.str()+"").c_str(),("hb"+ssi.str()+"").c_str(),50,56,74);
+    hr[i] = new TH1F(("hb"+ssi.str()+"").c_str(),("hb"+ssi.str()+"").c_str(),50,30,80);
     for(int j = 0; j < NSIPMPERBOARD; j++)hr[i]->Fill(RQ[i*6+j]);//hr[i]->Fill(RQ_cell[i*6+j]);
     hr[i]->SetFillColor(i+1);
-    lg->AddEntry(hr[i],("board "+ssii.str()+"").c_str(),"f");
+    lg->AddEntry(hr[i],(names[i]).c_str(),"f");
     hs->Add(hr[i]);
   }
   hs->Draw("same");

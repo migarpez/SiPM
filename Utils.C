@@ -1,3 +1,4 @@
+
 namespace SiPMUtils{
 
   //**********************************************************
@@ -78,7 +79,7 @@ namespace SiPMUtils{
     
     //get sipm from name
     if(filename.find("board") != -1){
-      return stod(filename.substr(filename.find("board")+5,2));
+      return stod(filename.substr(filename.find("board")+5,4));
     }
     else return -1;
   }
@@ -109,13 +110,13 @@ namespace SiPMUtils{
   //**********************************************************
 
     const double hqmin1_50 = -10e-9;
-    const double hqmin2_50 = -20e-9;
-    const double hqmax1_50 = 100e-9;
-    const double hqmax2_50 = 140e-9;
-    const double hqmin1_75 = -40e-9;
-    const double hqmin2_75 = -40e-9;
-    const double hqmax1_75 = 500e-9;
-    const double hqmax2_75 = 500e-9;
+    const double hqmin2_50 = -10e-9;
+    const double hqmax1_50 = 80e-9;
+    const double hqmax2_50 = 80e-9;
+    const double hqmin1_75 = -10e-9;
+    const double hqmin2_75 = -10e-9;
+    const double hqmax1_75 = 80e-9;
+    const double hqmax2_75 = 80e-9;
 
     const double OV50[] = {3,4  ,5};
     const double OV75[] = {2,2.5,3};

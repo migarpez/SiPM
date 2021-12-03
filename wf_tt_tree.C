@@ -3,7 +3,7 @@
 //IMPORTANT! the WFLENGTH parameter should match the input file!!
 
 const int NMAXFILES         = 100;
-const int WFLENGHT          = 1300; //short files, gain-like, 1250. Long files, cnoise-like, 3125.
+const int WFLENGHT          = 1500; //short files, gain-like, 1250. Long files, cnoise-like, 3125.
 const double default_wftime = 0.000002;
 bool use_default            = false; //if false, look for a tt-file. if not found, default will be used
 

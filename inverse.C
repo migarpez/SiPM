@@ -3,7 +3,7 @@
 #include "Utils.C"
 
 const int NMAXFILES     = 500;
-const int NBOARDS       = 20;
+const int NBOARDS       = 12;
 const int NSIPMPERBOARD = 6;
 
 bool plot_intermediate = true;
@@ -56,15 +56,15 @@ void analizeCurve(char* name,
   
   //define limits
   double fmin,fmax;
-  if(SiPMUtils::isColdFromName(filename)){
-    fmin = 41.5;
-    fmax = 45;
+  if(!SiPMUtils::isColdFromName(filename)){
+    fmin = 25;
+    fmax = 29;
   }
   else{
-    fmin = 51.1;
-    fmax = 55;
+    fmin = 26.5;
+    fmax = 27.5;
   }
-  
+
   //define IvsV function to compute derivative
   TF1* IvsV = new TF1("IvsV",[&](double*x, double *par){return tg->Eval(x[0]);},fmin,fmax,0);
 
@@ -88,7 +88,7 @@ void analizeCurve(char* name,
   tgf->GetXaxis()->SetRangeUser(fmin,fmax);
   tgf->GetYaxis()->SetTitle("#it{#frac{dI}{IdV}} (V^{-1})");
   tgf->Draw("al");
-  tgf->Fit("landau","Q","",maxvoltage-0.15,maxvoltage+0.5);
+  tgf->Fit("landau","Q","",maxvoltage-0.1,maxvoltage+0.3);
 
   BKV = static_cast<TF1*>(tgf->GetFunction("landau"))->GetParameter(1);
   eBKV = static_cast<TF1*>(tgf->GetFunction("landau"))->GetParameter(2);
@@ -167,7 +167,7 @@ void inverse(){
     if(board[counter]==17 && sipm[counter]==3)BKV[counter]=42.545;*/
 
     //fixed values for ln2 measurements after baths
-    if(board[counter]==2  && sipm[counter]==3)BKV[counter]=41.897;
+    /*if(board[counter]==2  && sipm[counter]==3)BKV[counter]=41.897;
     if(board[counter]==3  && sipm[counter]==1)BKV[counter]=42.529;
     if(board[counter]==3  && sipm[counter]==5)BKV[counter]=41.906;
     if(board[counter]==5  && sipm[counter]==4)BKV[counter]=41.895;
@@ -180,9 +180,10 @@ void inverse(){
     if(board[counter]==17 && sipm[counter]==1)BKV[counter]=41.565;
     if(board[counter]==17 && sipm[counter]==2)BKV[counter]=41.513;
     if(board[counter]==17 && sipm[counter]==3)BKV[counter]=41.554;
-    if(board[counter]==20 && sipm[counter]==1)BKV[counter]=41.695;
+    if(board[counter]==20 && sipm[counter]==1)BKV[counter]=41.695;*/
 
-    std::cout << board[counter] << " " << sipm[counter] << " " << BKV[counter] << " " << eBKV[counter] << std::endl;
+    //std::cout << board[counter] << " " << sipm[counter] << " " << BKV[counter] << " " << eBKV[counter] << std::endl;
+    std::cout << BKV[counter] << std::endl;
     
     counter++;
   }
@@ -197,29 +198,31 @@ void inverse(){
   gStyle->SetOptFit();
   //tg->Fit("pol1");
   
-  TH1F* hr = new TH1F("hr","hr",50,40,44);
+  TH1F* hr = new TH1F("hr","hr",50,26.5,28.5);
   for(int i = 0; i < counter; i++)hr->Fill(BKV[i]);
+  hr->GetXaxis()->SetTitle("#it{V_{B}} (V)");
   hr->Draw();
 
   //draw stacked histogram for boards
   THStack* hs = new THStack("hs",""); 
   TH1F* hb[NBOARDS];
   TLegend* lg = new TLegend (0.52,0.72,0.9,0.9);
+
+  std::string names[NBOARDS] = {"M3_7","P11_2","P11_3","P11_4","P11_5","P11_6","P11_8","P11_9","P11_10","P12_1","P12_2","P12_3"};
   
   for(int i = 0; i < NBOARDS; i++){
     std::stringstream ssi, ssii;
     ssi << i;
     ssii << i+1;
-    hb[i] = new TH1F(("hb"+ssi.str()+"").c_str(),("hb"+ssi.str()+"").c_str(),50,40,44);
+    hb[i] = new TH1F(("hb"+ssi.str()+"").c_str(),("hb"+ssi.str()+"").c_str(),50,32.6,33.6);
     for(int j = 0; j < NSIPMPERBOARD; j++)hb[i]->Fill(BKV[i*6+j]);
     hb[i]->SetFillColor(i+1);
-    lg->AddEntry(hb[i],("board "+ssii.str()+"").c_str(),"f");
+    lg->AddEntry(hb[i],(names[i]).c_str(),"f");
     hs->Add(hb[i]);
   }
   hs->Draw("same");
   hs->GetXaxis()->SetTitle("#it{V_{B}} (V)");
   lg->Draw();
 
-  //hr->GetXaxis()->SetTitle("#it{V_{B}} (V)");
-  //hr->Draw();
+  hr->Draw();
 }

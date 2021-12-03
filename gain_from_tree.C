@@ -13,9 +13,9 @@
 //general parameters
 const int NMAXFILES    = 3;
 const int NSETFILES    = 3;
-const int NMAXPEAKS    = 5;
+const int NMAXPEAKS    = 8;
 const int NMAXPEAKSFIT = 3;
-const int WFLENGTH     = 1625;
+const int WFLENGTH     = 3125;
 
 //constants for calculating
 const double AMPFACTOR_LN2_50O = 2940;
@@ -40,7 +40,7 @@ const bool lookForDCR = false; //if integrating whole wf no need to use it
 const bool integrateUpToPer    = false;
 const double PER               = 0.90;
 const double area_factor       = 1;//1.233; //1.233 for 75%
-const double time_limit_down   = 0.00000005;
+const double time_limit_down   = 0.0000000;
 //const double time_limit_up_fix[3] = {0.0000012,0.0000013,0.0000016};
 const double time_limit_up_fix = 0.000005;
 const double time_limit_up_min = 0.0000004;
@@ -80,8 +80,6 @@ void computeGain(TH1F* hq,
 		 const int NFILES){
 //**********************************************************
 
-  std::cout << std::endl;
-  
   //get OV into a string to print plots with appropiate name
   std::stringstream sOV;
   sOV << OV;
@@ -97,6 +95,7 @@ void computeGain(TH1F* hq,
   if(plot_intermediate){
     gPad->Update();
     gPad->WaitPrimitive();
+    gPad->Print("gain_charge_spectrum.pdf");
   }
   
   //substract background
@@ -108,7 +107,7 @@ void computeGain(TH1F* hq,
   hq->Draw();
   
   //go for peaks
-  int npeaks = s->Search(hq,1,"",0.05);
+  int npeaks = s->Search(hq,1,"goff",0.005);
   Double_t *peakx = s->GetPositionX();
   Double_t *peaky = s->GetPositionY();
   for(int i = 0 ; i < npeaks ; i++){
@@ -129,8 +128,8 @@ void computeGain(TH1F* hq,
   fgaus->SetParameters(par);
   for(int i = 0; i < npeaks; i++){
     fgaus->SetParLimits(i*3+0,par[i*3+1]*0.7,par[i*3+0]*1.3);
-    fgaus->SetParLimits(i*3+1,par[i*3+1]*0.9,par[i*3+1]*1.1);
-    fgaus->SetParLimits(i*3+2,0.0000000001,  0.0000001);
+    if(par[i*3+1]>0)fgaus->SetParLimits(i*3+1,par[i*3+1]*0.8,par[i*3+1]*1.2);
+    //fgaus->SetParLimits(i*3+2,0.0000000001,  0.0000001);
   }
   
   //for(int i = 0 ; i < npeaks ; i++){
@@ -142,13 +141,30 @@ void computeGain(TH1F* hq,
   //fit histogram without bg
   hq->GetXaxis()->SetTitle("#it{Charge} (Vs)");
   hq->GetYaxis()->SetTitle("#it{Entries}");
+  hq->Draw();
   hq->Fit("fgaus","");
+
   if(plot_intermediate){
     gPad->Update();
     gPad->WaitPrimitive();
   }
   if(plot_results)gPad->Print(("spectra_"+sOV.str()+"OV.pdf").c_str());
 
+  // Retrieve the stat box
+  TPaveStats *ps = (TPaveStats*)gPad->GetPrimitive("stats");
+  ps->SetName("mystats");
+  TList *listOfLines = ps->GetListOfLines();
+  // Remove the RMS line
+  TText *tconst = ps->GetLineWith("p0");
+  listOfLines->Remove(tconst);
+  hq->SetStats(0);
+  gPad->Modified();
+
+  if(plot_intermediate){
+    gPad->Update();
+    gPad->WaitPrimitive();
+  }
+  
   //store peaks position and rms
   double mean[NMAXPEAKS] = {0}, emean[NMAXPEAKS] = {0}, rms[NMAXPEAKS] = {0}, number[NMAXPEAKS] = {0};
   for(int i = 0; i < npeaks; i++){
@@ -233,13 +249,15 @@ Double_t integrateWf(double* time, double* V,
 
   //get baseline
   double baseline = h->GetMean();
-  
+
   //fill tg substracting baseline and look for integration limit
   for(int i = 0; i < WFLENGTH; i++){
     tg->SetPoint(i,time[i],V[i]-baseline);
     if(time[i] > time_limit_up_min && (V[i]-baseline) < (max-baseline)*(1-PER) && time_limit_up == -999)time_limit_up = time[i];
   }
 
+  //tg->Draw("ap");gPad->Update();gPad->WaitPrimitive();
+  
   //decide time limit
   if(integrateUpToPer){
     if(time_limit_up == -999)time_limit_up = time_limit_up_max;
@@ -304,7 +322,7 @@ void analizeTree(const std::string& name,
   int nentries = wf->GetEntries();
   
   //loop over wf
-  for(int i = 0; i < nentries; i++){
+  for(int i = 0; i < nentries/5; i++){
     wf->GetEntry(i);
 
     //check if there has been any DC in the waveform
@@ -328,8 +346,8 @@ void analizeTree(const std::string& name,
 void gain_from_tree(){
 //**********************************************************
 
-  gStyle->SetOptStat(1);
-  gStyle->SetOptFit(0);
+  gStyle->SetOptStat(0);
+  gStyle->SetOptFit(0100);
 
   //listname
   std::string listname = "lists/gain.list";
@@ -358,7 +376,7 @@ void gain_from_tree(){
   //main loop
   while(fscanf(pFile,"%s",filename) == 1){  
     if(filename[0] == '/' && filename[1] == '/')continue;
-
+    
     //create histogram with variable limits, depending on SiPM pitch
     //select overvoltages depending on SiPM pitch
     if(NFILES == 0){
@@ -366,15 +384,15 @@ void gain_from_tree(){
       sipm  = SiPMUtils::getSiPMFromName(filename);
       SiPMUtils::initializeChargeHistogramByPitch(board,sipm,OV,hqmin1,hqmin2,hqmax1,hqmax2);
     }
-    TH1F* hq = new TH1F("hq","hq",500,
+    TH1F* hq = new TH1F("","",500,
 			hqmin1+(NFILES%NSETFILES)*(hqmin2-hqmin1)/NSETFILES,
 			hqmax1+(NFILES%NSETFILES)*(hqmax2-hqmax1)/NSETFILES);
-
+    std::cout << filename << std::endl;
+	
     //getx operating voltage and decide wether to use absolute or relative
     SiPMUtils::getVoltageFromName(filename,V[NFILES]);
     if(use_abs_voltage)voltage[NFILES] = V[NFILES];
     else voltage[NFILES] = OV[NFILES];
-   
     //analize datafile
     analizeTree(filename,hq,SNR[NFILES],GAIN[NFILES],eGAIN[NFILES],voltage[NFILES],NFILES);
     
