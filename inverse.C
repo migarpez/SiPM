@@ -57,8 +57,8 @@ void analizeCurve(char* name,
   //define limits
   double fmin,fmax;
   if(!SiPMUtils::isColdFromName(filename)){
-    fmin = 25;
-    fmax = 29;
+    fmin = 30;
+    fmax = 33;
   }
   else{
     fmin = 26.5;
