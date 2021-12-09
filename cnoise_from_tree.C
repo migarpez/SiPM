@@ -2,22 +2,11 @@
 #include "Utils.C"
 
 //general parameters
-const int NMAXFILES = 3;
+const int NMAXFILES = 100;
 const int NMAXPEAKS = 5;
-const int WFLENGTH  = 3125;
-
-//sipm pitch related
-const int SIPM75[]           = {11,15,16,17,19,21,12}; //12 is from Madrid
-const double OV50[NMAXFILES] = {3,4  ,5};
-const double OV75[NMAXFILES] = {2,2.5,3};
-
-//
-const double peak_level  = 0.; //zero if not wanted a lower limit
-const double cut_level   = 0.; //zero if not wanted a lower limit
-const double noise_level = 0.000; //zero if not wanted a lower limit
+const int WFLENGTH  = 1500;
 
 //parameters for ploting/printing results
-
 bool plot_intermediate = false;
 bool plot_is_noise     = false;
 bool plot_clean_peaks  = false;
@@ -49,8 +38,6 @@ int getMultipleEvents(TH1F* hxt,
 		      double pe){
 //**********************************************************
 
-  std::cout << pe << std::endl;
-  
   tl->SetY1(3*pe/2);
   tl->SetY2(3*pe/2);
 
@@ -67,7 +54,9 @@ double getBaseline(double*time, double* V){
 
   //fit all wf to an horizontal line and get mean value
   TGraph* tg = new TGraph(WFLENGTH,time,V);
-  tg->Fit("pol0","Q","",4e-6,9e-6);
+  tg->Fit("pol0","Q","",2e-6,9e-6);
+  tg->Draw("ap");
+  gPad->Update();gPad->WaitPrimitive();
   if(!static_cast<TF1*>(tg->GetFunction("pol0"))){
     double baseline = 0;
     tg->Delete();
@@ -93,45 +82,38 @@ void getVoltageFromName(const std::string& name,
 }
 
 //**********************************************************
-bool isNoise(double* time, double* V, const double baseline){
+bool isNoise(double* time, double* V){
 //**********************************************************
 
   bool isNoise = false;
-  double vmax  = 0;
   
   for(int i = 0; i < WFLENGTH; i++){
-    if(time[i] > 0.05e-6 && time[i] < 0.1e-6 && V[i]-baseline<0){
+    if(time[i] > 0.15e-6 && time[i] < 0.2e-6 && V[i]<0.03){
       isNoise = true;
       break;
     }
   }
 
-  if(plot_is_noise && !isNoise){
-    std::cout << "noise: " << isNoise << std::endl;
-    TGraph* tg = new TGraph(WFLENGTH,time,V);tg->Draw("ap");gPad->Update();gPad->WaitPrimitive();
+  if(isNoise && plot_is_noise){
+    TGraph* tg = new TGraph(WFLENGTH,time,V);
+    tg->Draw("ap");gPad->Update();gPad->WaitPrimitive();
   }
-
+  
   return isNoise;
 }
 
 //**********************************************************
 void analizeWf(double* ftime, double* fV,
 	       const double absolute_time,
-	       const double baseline,
-	       int &nevents,
-	       TGraph* tg,
-	       TH1F* hxt){
+	       std::vector<std::pair<int,std::pair<double,double>>> &pulses,
+	       int iwf){
 //**********************************************************
 
   //create a histogram for the wf and another for the baseline
   TH1F* h   = new TH1F("h"  ,"h"  ,WFLENGTH,ftime[0],ftime[WFLENGTH-1]);
-  TH1F* hbl = new TH1F("hbl","hbl",200     ,-0.05  ,0.05);
 
   //fill wf and baseline
-  for(int i = 0; i < WFLENGTH; i++){
-    h->SetBinContent(i,fV[i]-baseline);
-    hbl->Fill(fV[i]-baseline);
-  }
+  for(int i = 0; i < WFLENGTH; i++)h->SetBinContent(i,fV[i]);
 
   h->Rebin(16);//h->Draw();gPad->WaitPrimitive();
 
@@ -159,38 +141,17 @@ void analizeWf(double* ftime, double* fV,
     }
   }
 
-  //Get baseline rms
-  double blrms    = hbl->GetRMS();
-  
-  //check that found peaks are not noise
-  int clean_peaks = npeaks;
-  for(int i = 0; i < npeaks; i++){
-    //set absolute time for peaks
-    tpeak[i] = tpeak[i] + absolute_time;
-    if(Vpeak[i] < 3*blrms){
-      Vpeak[i] = -999;
-      clean_peaks = clean_peaks-1;
-    }
-  }
-
-  if(clean_peaks>1){
+  if(npeaks>1){
     h->Draw();
-    std::cout << baseline << "+/- " << hbl->GetRMS() << " clean = " << clean_peaks << std::endl;
     if(plot_clean_peaks){gPad->Update();gPad->WaitPrimitive();}
   }
 
   //store info in the tgraph
   for(int i = 0; i < npeaks; i++){
-    if(Vpeak[i] == -999 || tpeak[i] < 0 || Vpeak[i] < peak_level)continue;
-    tg->SetPoint(nevents,tpeak[i],Vpeak[i]);
-    hxt->Fill(Vpeak[i]);
-    //tg->Draw("ap");gPad->WaitPrimitive();
-    nevents = nevents+1;
+    pulses.push_back(std::make_pair(iwf,std::make_pair(tpeak[i]+absolute_time,Vpeak[i])));
   }
-
-  hbl->Delete();
+  
   h->Delete();
-
 }
 
 //**********************************************************
@@ -199,17 +160,12 @@ void analizeTree(const std::string& name,
 		 double &fDCR, double &feDCR,
 		 double &XT  , double &eXT  ,
 		 double &AP  , double &eAP  ,
-		 const double OV,
 		 const int NFILES){
 //**********************************************************
 
   //the input file name
   std::string filename(name);
   std::cout << "running on file '" << filename << "'" << endl;
-
-  //get OV into a string to print plots with appropiate name
-  std::stringstream sOV;
-  sOV << OV;
 
   //histogram for dcr. Prepare logarithmic binning
   double binmin      = 1e-7;
@@ -225,10 +181,11 @@ void analizeTree(const std::string& name,
   TH1F* hmhz = new TH1F("hmhz","hmhz",80,0,150);
 
   //histogram for xtalk
-  TH1F* hxt  = new TH1F("hxt" ,"hxt" ,1000,0,2);
+  TH1F* hxt  = new TH1F("hxt" ,"hxt" ,1000,0,5);
   
-  //TGraph for 2D plot
-  TGraph* tg = new TGraph();
+  //vector for storing peak information
+  std::vector<std::pair<int,std::pair<double,double>>> pulses;
+  pulses.clear();
 
   //TLine for XT level
   TLine* tlxt = new TLine();
@@ -248,7 +205,6 @@ void analizeTree(const std::string& name,
 
   //set variables for cnoise
   double absolute_time = 1;
-  double baseline      = 0;
   int ntriggers        = 0;
   int nevents          = 0;
   
@@ -256,83 +212,87 @@ void analizeTree(const std::string& name,
   int nentries = wf->GetEntries();
   
   //loop over the wfs
-  //for(int i = 0; i < 1000; i++){
   for(int i = 0; i < nentries; i++){
 
     //get info
     wf->GetEntry(i);
     absolute_time = absolute_time + fwftime;
-    baseline      = getBaseline(ftime,fV);
 
     //if waveform is not noise, add one more event and fill graphs
-    if(!isNoise(ftime,fV,baseline)){
+    if(!isNoise(ftime,fV)){
       //get peaks position and amplitude from wf and fill histograms
-      analizeWf(ftime,fV,absolute_time,baseline,nevents,tg,hxt);
+      analizeWf(ftime,fV,absolute_time,pulses,i);
       ntriggers++;
-      if(i%5000==0)std::cout << i+1 << "/" << nentries << std::endl;
+      if(i%500==0)std::cout << i+1 << "/" << nentries << std::endl;
     }
-
   }
 
-  std::cout << absolute_time << std::endl;
-  
+  //fill amplitude histogram
+  for(int i = 0; i < pulses.size(); i++){
+      hxt->Fill(pulses[i].second.second);
+  }
+
   //get photoelectron level to set boundaries
   double pe = getPE(hxt);
-  std::cout << pe << std::endl;
   
   //create new tgraph to do the main plot. 
   TGraph* mtg = new TGraph();
 
-  //run over the stored peaks in the histogram and get info
+  //run over the stored peaks in and get info
   double V0,t0,Vnext,tnext,triggertime;
   int point = 0;
   //get point "zero"
-  tg->GetPoint(0,t0,V0);
-  for(int i = 1; i < nevents; i++){
-    
+  int zero = 0;
+  for(int i = 0; i < pulses.size(); i++){
+    if(pulses[i].second.second<pe/2)continue;
+    t0 = pulses[i].second.first;
+    V0 = pulses[i].second.second;
+    zero = i;
+    nevents++;
+    break;
+  }
+
+  for(int i = zero+1; i < pulses.size(); i++){
     //get "next" point
-    tg->GetPoint(i,tnext,Vnext);
+    tnext = pulses[i].second.first;
+    Vnext = pulses[i].second.second;
     //skip it if below half PE
-    if(Vnext<pe/2 || Vnext<cut_level)continue;
+    if(Vnext<pe/2)continue;
 
     //compute time between points and increase AP if needed
     triggertime = tnext-t0;
-    if(triggertime < 0 || triggertime > 100)continue;
-    if(triggertime>0 && triggertime<5e-6)AP++;
+    if(triggertime < 0)continue;
+    if(triggertime > 0 && triggertime<5e-6)AP++;
     
     //fill histograms and main plot
-    mtg->SetPoint(point,triggertime,Vnext);
+    mtg->SetPoint(nevents-1,triggertime,Vnext);
     hdcr->Fill(triggertime);
     hmhz->Fill(1000/((triggertime)*36));
-    //hxt ->Fill(Vnext);
 
     V0 = Vnext;
     t0 = tnext;
-    point++;
+    nevents++;
   }
 
   //compute AP
   eAP = 100*sqrt(pow(sqrt(AP)/nevents,2)+pow(AP*sqrt(nevents)/(nevents*nevents),2));
-  AP  = 100*AP/point;//nevents;
+  AP  = 100*AP/nevents;
 
-  std::cout << "MIGUE " << AP << std::endl;
-  
   //compute xt
   //get events with more that one pe
   int multiple = getMultipleEvents(hxt,tlxt,pe);
-  XT  = 100*(double)multiple/point;//nevents
-  eXT = 100*sqrt(pow(sqrt(multiple)/point,2)+pow(multiple*sqrt(point)/(point*point),2));
+  XT  = 100*(double)multiple/nevents;
+  eXT = 100*sqrt(pow(sqrt(multiple)/nevents,2)+pow(multiple*sqrt(nevents)/(nevents*nevents),2));
   
   //draw and print 1D rate plot. Compute DCR
   gPad->SetLogx();
   hdcr->GetXaxis()->SetTitle("#it{Delay time} (s)");
   hdcr->GetYaxis()->SetTitle("#it{Events}");
   hdcr->Draw();if(plot_intermediate){gPad->Update();gPad->WaitPrimitive();}
-  if(plot_results)gPad->Print(("delaytime_"+sOV.str()+"OV.pdf").c_str());
-  DCR  = point/absolute_time;//ntriggers/absolute_time;
+  DCR  = nevents/absolute_time;//ntriggers/absolute_time;
   DCR  = DCR/36;
   DCR  = DCR*1000;
-  eDCR = 1000*sqrt(point)/(absolute_time*36);
+  eDCR = 1000*sqrt(nevents)/(absolute_time*36);
 
   //draw hz distribution, fit and compute fit DCR
   //gPad->SetLogx(0);
@@ -343,15 +303,11 @@ void analizeTree(const std::string& name,
   hmhz->Draw("e");
   TF1* f = new TF1("f","landau(0)+pol0(3)");
   f->SetParameters(60,10,5,0);
-  //TF1* f = new TF1("f","landau(0)+landau(3)");
-  //f->SetParameters(60,10,5,30,60,10);
   f->SetParLimits(1,0,30);
-  //x  f->SetParLimits(4,30,100);
   hmhz->Fit("f","Q");if(plot_intermediate){gPad->Update();gPad->WaitPrimitive();}
   fDCR  = f->GetParameter(1);
   feDCR = f->GetParError(1);
-  if(plot_results)gPad->Print(("rate_"+sOV.str()+"OV.pdf").c_str());
-
+  
   //draw and print main plot
   gPad->SetLogx();gPad->SetLogy(0);
   mtg->SetMarkerStyle(20);
@@ -371,8 +327,7 @@ void analizeTree(const std::string& name,
   tlap->SetLineColor(2);
   tlap->Draw();
   if(plot_intermediate){gPad->Update();gPad->WaitPrimitive();}
-  if(plot_results)gPad->Print(("2dplot_"+sOV.str()+"OV.pdf").c_str());
-
+  
   gPad->SetLogx(0);gPad->SetLogy(0);
   
   //delete stuff
@@ -383,7 +338,6 @@ void analizeTree(const std::string& name,
   tlxt->Delete();
   tlap->Delete();
   mtg->Delete();
-  tg->Delete();
 }
 
 //**********************************************************
@@ -411,9 +365,6 @@ void cnoise_from_tree(){
   double eXT[NMAXFILES]     = {0};
   double AP[NMAXFILES]      = {0};
   double eAP[NMAXFILES]     = {0};
-  double V[NMAXFILES]       = {0};
-  double OV[NMAXFILES]      = {3,4,5};
-  double voltage[NMAXFILES] = {0};
   
   //Read the list file
   char filename[200];
@@ -422,69 +373,39 @@ void cnoise_from_tree(){
   
   while(fscanf(pFile,"%s",filename) == 1 && NFILES < NMAXFILES){  
     if(filename[0] == '/' && filename[1] == '/')continue;
-    if(NFILES == 0){
-      sipm = SiPMUtils::getSiPMFromName(filename);
-      //initializeByPitch(sipm,OV);
-    }
-    //getx operating voltage and decide wether to use absolute or relative
-    //SiPMUtils::getVoltageFromName(filename,V[NFILES]);
-    //if(use_abs_voltage)voltage[NFILES] = V[NFILES];
-    //else voltage[NFILES] = OV[NFILES];
-    analizeTree(filename,DCR[NFILES],eDCR[NFILES],fDCR[NFILES],feDCR[NFILES],XT[NFILES],eXT[NFILES],AP[NFILES],eAP[NFILES],voltage[NFILES],NFILES);
+    analizeTree(filename,DCR[NFILES],eDCR[NFILES],fDCR[NFILES],feDCR[NFILES],XT[NFILES],eXT[NFILES],AP[NFILES],eAP[NFILES],NFILES);
     NFILES++;
   }
-
+  
   //print results
   if(print_results){
     std::cout << "------------------------------------------------------------------" << std::endl;
     std::cout << "RESULTS" << std::endl;
     std::cout << "------------------------------------------------------------------" << std::endl;
-    //std::cout << "OV(V) \t" << "DCR(mHz/mm²) \t Error" << std::endl;
-    //for(int i = 0; i < NFILES; i++)std::cout << DCR[i] << " " << eDCR[i] << std::endl;
+    std::cout << "DCR(mHz/mm²) \t Error" << std::endl;
+    for(int i = 0; i < NFILES; i++)std::cout << DCR[i] << " " << eDCR[i] << std::endl;
 
-    //std::cout << "OV(V) \t" << "DCR(mHz/mm²) fit Error" << std::endl;
-    //for(int i = 0; i < NFILES; i++)std::cout << fDCR[i] << " " << feDCR[i] << std::endl;
+    std::cout << "DCR(mHz/mm²) fit Error" << std::endl;
+    for(int i = 0; i < NFILES; i++)std::cout << fDCR[i] << " " << feDCR[i] << std::endl;
 
-    //std::cout << "OV(V) \t" << "XT(%) \t \t Error" << std::endl;
-    //for(int i = 0; i < NFILES; i++)std::cout << XT[i] << " " << eXT[i] << std::endl;
+    std::cout << "XT(%) \t \t Error" << std::endl;
+    for(int i = 0; i < NFILES; i++)std::cout << XT[i] << " " << eXT[i] << std::endl;
 
-    //std::cout << "OV(V) \t" << "AP(%) \t \t Error" << std::endl;
-    //for(int i = 0; i < NFILES; i++)std::cout << AP[i] << " " << eAP[i] << std::endl;
-
-    for(int i = 0; i < NFILES; i++)std::cout << DCR[i] << " " << eDCR[i] << " " << fDCR[i] << " " << feDCR[i] << " " << XT[i] << " " << eXT[i] << " " << AP[i] << " " << eAP[i] << std::endl;
+    std::cout << "AP(%) \t \t Error" << std::endl;
+    for(int i = 0; i < NFILES; i++)std::cout << AP[i] << " " << eAP[i] << std::endl;
   }
 
-  //plot results
-  TCanvas* c1 = new TCanvas("c1","c1",600,600);
-  TGraphErrors* tg = new TGraphErrors(NFILES,OV,DCR,0,eDCR);
-  tg->SetMarkerStyle(20);
-  tg->GetXaxis()->SetTitle("#it{OV} (V)");
-  tg->GetYaxis()->SetTitle("#it{DCR} (mHz)");
-  tg->Draw("ap");
-  if(plot_results)c1->Print("DCR.pdf");
+  TH1F* hdcr = new TH1F("hdcr","hdcr",20,0,50);
+  TH1F* hxt = new TH1F("hxt","hxt",20,0,30);
+  TH1F* hap = new TH1F("hap","hap",20,0,5);
+  for(int i = 0; i < NFILES; i++){
+    hdcr->Fill(fDCR[i]);
+    hxt->Fill(XT[i]);
+    hap->Fill(AP[i]);
+  }
 
-  TCanvas* c2 = new TCanvas("c2","c2",600,600);
-  TGraphErrors* tg2 = new TGraphErrors(NFILES,OV,fDCR,0,feDCR);
-  tg2->SetMarkerStyle(20);
-  tg2->GetXaxis()->SetTitle("#it{OV} (V)");
-  tg2->GetYaxis()->SetTitle("#it{DCR from fit} (mHz)");
-  tg2->Draw("ap");
-  if(plot_results)c2->Print("DCRfromfit.pdf");
-
-  TCanvas* c3 = new TCanvas("c3","c3",600,600);
-  TGraphErrors* tg3 = new TGraphErrors(NFILES,OV,XT,0,eXT);
-  tg3->SetMarkerStyle(20);
-  tg3->GetXaxis()->SetTitle("#it{OV} (V)");
-  tg3->GetYaxis()->SetTitle("#it{X-Talk} (%)");
-  tg3->Draw("ap");
-  if(plot_results)c3->Print("XT.pdf");
-
-  TCanvas* c4 = new TCanvas("c4","c4",600,600);
-  TGraphErrors* tg4 = new TGraphErrors(NFILES,OV,AP,0,eAP);
-  tg4->SetMarkerStyle(20);
-  tg4->GetXaxis()->SetTitle("#it{OV} (V)");
-  tg4->GetYaxis()->SetTitle("#it{AP} (%)");
-  tg4->Draw("ap");
-  if(plot_results)c4->Print("AP.pdf");
+  hdcr->Draw();gPad->Update();gPad->WaitPrimitive();
+  hxt->Draw();gPad->Update();gPad->WaitPrimitive();
+  hap->Draw();gPad->Update();gPad->WaitPrimitive();
 }
 
