@@ -60,5 +60,8 @@ cnoise_from_tree.C
 ///////////////////////////////
 
 This macro computes all correlated noise variables (DCR, AP and XT) for each
-.root file provided in the lists/cnoise.list file. It is quite caotic, I still
-need to simplify it. 
+.root file provided in the lists/cnoise.list file. It is quite chaotic.
+
+Before a waveform in analyzed, it is determined if it is electronic noise or
+it isn't. There is no general way to determine a waveform as noise, so the
+algorithm should be modified depending on the situation.
