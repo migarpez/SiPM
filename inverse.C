@@ -6,6 +6,10 @@ const int NMAXFILES     = 500;
 const int NBOARDS       = 12;
 const int NSIPMPERBOARD = 6;
 
+const double VMIN = 26.5;
+const double VMAX = 27.5;
+const double RANGE = 0.08 ;
+
 bool plot_intermediate = true;
 
 //**********************************************************
@@ -54,19 +58,8 @@ void analizeCurve(char* name,
   //close file
   fclose(iFile);
   
-  //define limits
-  double fmin,fmax;
-  if(!SiPMUtils::isColdFromName(filename)){
-    fmin = 30;
-    fmax = 33;
-  }
-  else{
-    fmin = 26.5;
-    fmax = 27.5;
-  }
-
   //define IvsV function to compute derivative
-  TF1* IvsV = new TF1("IvsV",[&](double*x, double *par){return tg->Eval(x[0]);},fmin,fmax,0);
+  TF1* IvsV = new TF1("IvsV",[&](double*x, double *par){return tg->Eval(x[0]);},VMIN,VMAX,0);
 
   //compute final function
   double inverse, voltage, value, maxvalue = 0, maxvoltage;
@@ -74,9 +67,9 @@ void analizeCurve(char* name,
   for(int j = 0; j < i; j++){
     tgi->GetPoint(j,voltage,inverse);
     value = inverse*IvsV->Derivative(voltage);
-    if(voltage < fmin || voltage > fmax)continue;
+    if(voltage < VMIN || voltage > VMAX)continue;
     tgf->SetPoint(counter,voltage,value);
-    if(value > maxvalue && voltage>fmin){
+    if(value > maxvalue && voltage>VMIN){
       maxvalue = value;
       maxvoltage = voltage;
     }
@@ -85,10 +78,10 @@ void analizeCurve(char* name,
 
   c2->cd();
   tgf->GetXaxis()->SetTitle("#it{Voltage} (V)");
-  tgf->GetXaxis()->SetRangeUser(fmin,fmax);
+  tgf->GetXaxis()->SetRangeUser(VMIN,VMAX);
   tgf->GetYaxis()->SetTitle("#it{#frac{dI}{IdV}} (V^{-1})");
   tgf->Draw("al");
-  tgf->Fit("landau","Q","",maxvoltage-0.1,maxvoltage+0.3);
+  tgf->Fit("landau","Q","",maxvoltage-RANGE,maxvoltage+RANGE*1.5);
 
   BKV = static_cast<TF1*>(tgf->GetFunction("landau"))->GetParameter(1);
   eBKV = static_cast<TF1*>(tgf->GetFunction("landau"))->GetParameter(2);
@@ -145,50 +138,13 @@ void inverse(){
 
     analizeCurve(file_name,c1,c2,BKV[counter],eBKV[counter]);
     
-    //fixed values for warm measurements
-    //if(board[counter]==3  && sipm[counter]==1)BKV[counter]=52.46;
-    //if(board[counter]==15 && sipm[counter]==2)BKV[counter]=51.99;
-    //if(board[counter]==20 && sipm[counter]==4)BKV[counter]=51.60;
-
-    //fixed values for ln2 measurements pre baths
-    /*if(board[counter]==1  && sipm[counter]==1)BKV[counter]=42.575;
-    if(board[counter]==1  && sipm[counter]==5)BKV[counter]=42.339;
-    if(board[counter]==1  && sipm[counter]==6)BKV[counter]=42.440;
-    if(board[counter]==3  && sipm[counter]==1)BKV[counter]=42.494;
-    if(board[counter]==3  && sipm[counter]==2)BKV[counter]=42.421;
-    if(board[counter]==6  && sipm[counter]==1)BKV[counter]=42.018;
-    if(board[counter]==7  && sipm[counter]==1)BKV[counter]=42.555;
-    if(board[counter]==8  && sipm[counter]==2)BKV[counter]=41.876;
-    if(board[counter]==15 && sipm[counter]==2)BKV[counter]=41.911;
-    if(board[counter]==16 && sipm[counter]==1)BKV[counter]=41.540;
-    if(board[counter]==16 && sipm[counter]==2)BKV[counter]=41.544;
-    if(board[counter]==17 && sipm[counter]==1)BKV[counter]=42.553;
-    if(board[counter]==17 && sipm[counter]==2)BKV[counter]=42.504;
-    if(board[counter]==17 && sipm[counter]==3)BKV[counter]=42.545;*/
-
-    //fixed values for ln2 measurements after baths
-    /*if(board[counter]==2  && sipm[counter]==3)BKV[counter]=41.897;
-    if(board[counter]==3  && sipm[counter]==1)BKV[counter]=42.529;
-    if(board[counter]==3  && sipm[counter]==5)BKV[counter]=41.906;
-    if(board[counter]==5  && sipm[counter]==4)BKV[counter]=41.895;
-    if(board[counter]==7  && sipm[counter]==3)BKV[counter]=42.447;
-    if(board[counter]==14 && sipm[counter]==1)BKV[counter]=41.800;
-    if(board[counter]==15 && sipm[counter]==1)BKV[counter]=41.415;
-    if(board[counter]==16 && sipm[counter]==1)BKV[counter]=41.540;
-    if(board[counter]==16 && sipm[counter]==2)BKV[counter]=41.546;
-    if(board[counter]==16 && sipm[counter]==6)BKV[counter]=41.900;
-    if(board[counter]==17 && sipm[counter]==1)BKV[counter]=41.565;
-    if(board[counter]==17 && sipm[counter]==2)BKV[counter]=41.513;
-    if(board[counter]==17 && sipm[counter]==3)BKV[counter]=41.554;
-    if(board[counter]==20 && sipm[counter]==1)BKV[counter]=41.695;*/
-
     //std::cout << board[counter] << " " << sipm[counter] << " " << BKV[counter] << " " << eBKV[counter] << std::endl;
     std::cout << BKV[counter] << std::endl;
     
     counter++;
   }
   
-  c3->cd();
+  /*c3->cd();
   TGraphErrors* tg = new TGraphErrors(counter,sipm,BKV,0,eBKV);
   tg->GetXaxis()->SetTitle("#it{SiPM}");
   tg->GetYaxis()->SetTitle("#it{V_{breakdown}} (V)");
@@ -198,7 +154,7 @@ void inverse(){
   gStyle->SetOptFit();
   //tg->Fit("pol1");
   
-  TH1F* hr = new TH1F("hr","hr",50,26.5,28.5);
+  TH1F* hr = new TH1F("hr","hr",50,32.5,33);
   for(int i = 0; i < counter; i++)hr->Fill(BKV[i]);
   hr->GetXaxis()->SetTitle("#it{V_{B}} (V)");
   hr->Draw();
@@ -224,5 +180,5 @@ void inverse(){
   hs->GetXaxis()->SetTitle("#it{V_{B}} (V)");
   lg->Draw();
 
-  hr->Draw();
+  hr->Draw();*/
 }

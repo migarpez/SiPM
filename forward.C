@@ -178,7 +178,7 @@ void forward(){
     counter++;
   }  
   
-  c2->cd();
+  /*c2->cd();
   TGraphErrors* tg = new TGraphErrors(counter,sipm,RQ_cell,0,eRQ_cell);
   tg->GetXaxis()->SetTitle("#it{SiPM}");
   tg->GetYaxis()->SetTitle("#it{R_{q}} (M#Omega)");
@@ -215,7 +215,5 @@ void forward(){
   }
   hs->Draw("same");
   hs->GetXaxis()->SetTitle("#it{R_{Q}} (#Omega)");
-  lg->Draw();
-
-  
+  lg->Draw();*/
 }
